@@ -109,8 +109,12 @@ body {
 /* ── Card styles ─────────────────────────────────────────────────────────── */
 @layer components {
   .card {
-    @apply rounded-xl border bg-[var(--bg-surface)] border-[var(--border)]
-           shadow-card transition-shadow duration-200;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 12px rgba(0,0,0,.04);
+  transition: box-shadow .2s;
+}
   }
   .card-hover {
     @apply hover:shadow-card-hover hover:border-brand-500/30;
