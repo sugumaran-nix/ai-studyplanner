@@ -1,0 +1,155 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Inter variable font ─────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+/* ── CSS custom properties ───────────────────────────────────────────────── */
+:root {
+  --bg-base:       #ffffff;
+  --bg-surface:    #f8fafc;
+  --bg-raised:     #f1f5f9;
+  --bg-overlay:    #e2e8f0;
+  --border:        #e2e8f0;
+  --text-primary:  #0f172a;
+  --text-secondary:#475569;
+  --text-muted:    #94a3b8;
+  --brand:         #6366f1;
+  --brand-hover:   #4f46e5;
+  --scrollbar-bg:  #f1f5f9;
+  --scrollbar-thumb: #cbd5e1;
+}
+
+.dark {
+  --bg-base:       #0f0f13;
+  --bg-surface:    #16161d;
+  --bg-raised:     #1e1e28;
+  --bg-overlay:    #252532;
+  --border:        #2e2e3e;
+  --text-primary:  #f1f5f9;
+  --text-secondary:#94a3b8;
+  --text-muted:    #64748b;
+  --brand:         #818cf8;
+  --brand-hover:   #6366f1;
+  --scrollbar-bg:  #1e1e28;
+  --scrollbar-thumb: #3e3e52;
+}
+
+/* ── Base resets ──────────────────────────────────────────────────────────── */
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+/* ── Custom scrollbar ────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--scrollbar-bg); }
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--brand); }
+
+/* ── Shimmer skeleton ────────────────────────────────────────────────────── */
+@layer utilities {
+  .animate-shimmer {
+    background: linear-gradient(
+      90deg,
+      var(--bg-raised) 25%,
+      var(--bg-overlay) 50%,
+      var(--bg-raised) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+}
+
+/* ── Prose overrides for AI markdown ────────────────────────────────────── */
+.ai-prose {
+  line-height: 1.7;
+  font-size: 0.9375rem;
+}
+.ai-prose h1, .ai-prose h2, .ai-prose h3 {
+  font-weight: 600;
+  margin-top: 1.25em;
+  margin-bottom: 0.5em;
+}
+.ai-prose p { margin-bottom: 0.75em; }
+.ai-prose ul { list-style: disc; padding-left: 1.4em; margin-bottom: 0.75em; }
+.ai-prose ol { list-style: decimal; padding-left: 1.4em; margin-bottom: 0.75em; }
+.ai-prose code {
+  background: var(--bg-overlay);
+  border-radius: 4px;
+  padding: 0.1em 0.4em;
+  font-size: 0.85em;
+  font-family: "JetBrains Mono", monospace;
+}
+.ai-prose pre {
+  background: var(--bg-overlay);
+  border-radius: 8px;
+  padding: 1rem;
+  overflow-x: auto;
+  margin-bottom: 1em;
+}
+.ai-prose strong { font-weight: 600; }
+.ai-prose blockquote {
+  border-left: 3px solid var(--brand);
+  padding-left: 1em;
+  color: var(--text-secondary);
+  font-style: italic;
+  margin: 0.75em 0;
+}
+
+/* ── Card styles ─────────────────────────────────────────────────────────── */
+@layer components {
+  .card {
+    @apply rounded-xl border bg-[var(--bg-surface)] border-[var(--border)]
+           shadow-card transition-shadow duration-200;
+  }
+  .card-hover {
+    @apply hover:shadow-card-hover hover:border-brand-500/30;
+  }
+  .btn-primary {
+    @apply bg-brand-500 hover:bg-brand-600 text-white font-medium rounded-lg
+           px-4 py-2.5 transition-all duration-200 active:scale-[0.97]
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-ghost {
+    @apply hover:bg-[var(--bg-raised)] text-[var(--text-secondary)]
+           hover:text-[var(--text-primary)] rounded-lg px-3 py-2
+           transition-all duration-150 font-medium;
+  }
+  .input-base {
+    @apply w-full bg-[var(--bg-raised)] border border-[var(--border)]
+           rounded-lg px-3.5 py-2.5 text-[var(--text-primary)]
+           placeholder:text-[var(--text-muted)]
+           focus:outline-none focus:ring-2 focus:ring-brand-500/40
+           focus:border-brand-500/60 transition-all duration-150 text-sm;
+  }
+  .label {
+    @apply text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wide;
+  }
+  .badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border;
+  }
+}
+
+/* ── Focus visible ring ──────────────────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+/* ── Reduced motion ──────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
