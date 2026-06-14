@@ -29,7 +29,7 @@ export default function AIRecommendationsPanel() {
     });
   }
 
-  if (lastAnalysis?.weak_topics?.length > 0) {
+if (lastAnalysis?.weak_topics && lastAnalysis.weak_topics.length > 0) {
     recs.push({
       icon: Lightbulb,
       color: "text-indigo-400",
