@@ -62,7 +62,7 @@ export default function PlannerPage() {
       {/* Tab content */}
       <div className="animate-fade-in">
         {activeTab === "generate" && <PlannerForm onGenerated={() => setActiveTab("plan")} />}
-        {activeTab === "plan"     && <StudyPlanView />}
+        {activeTab === "plan"     && <StudyPlanView onNavigateToGenerate={() => setActiveTab("generate")} />}
         {activeTab === "upload"   && <FileUploadZone />}
         {activeTab === "analyze"  && <WeakTopicAnalyzer />}
       </div>

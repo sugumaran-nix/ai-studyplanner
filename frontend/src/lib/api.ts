@@ -32,14 +32,25 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Normalize errors
+// BUG FIX: distinguish network failures (backend unreachable) from API errors
+// (backend reachable but returned an error). Previously both showed the same
+// generic "Network Error" from Axios, giving users no actionable info.
 api.interceptors.response.use(
   (res) => res,
   (err: AxiosError<{ detail: string }>) => {
-    const message =
-      err.response?.data?.detail ??
-      err.message ??
-      "Something went wrong. Please try again.";
+    let message: string;
+    if (!err.response) {
+      // No response at all — server is down or CORS preflight failed
+      message =
+        "Cannot reach the server. Please check your internet connection " +
+        "or try again in a moment.";
+    } else {
+      // Server responded with an error status
+      message =
+        err.response.data?.detail ??
+        err.message ??
+        "Something went wrong. Please try again.";
+    }
     return Promise.reject(new Error(message));
   }
 );

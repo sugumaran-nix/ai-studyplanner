@@ -7,7 +7,14 @@ import { BookOpen, Target, RotateCcw, ChevronDown, ChevronUp, Calendar } from "l
 import { cn } from "@/lib/utils";
 import type { DayPlan } from "@/types";
 
-export default function StudyPlanView() {
+interface Props {
+  // BUG FIX: added onNavigateToGenerate callback so the "Generate your first plan →"
+  // link can actually navigate back to the Generate tab. Previously it was a plain
+  // <span> with cursor-pointer but no click handler — completely non-functional.
+  onNavigateToGenerate?: () => void;
+}
+
+export default function StudyPlanView({ onNavigateToGenerate }: Props) {
   const { activePlan, setActivePlan } = useStore();
 
   if (!activePlan) {
@@ -15,13 +22,21 @@ export default function StudyPlanView() {
       <div className="card p-12 text-center">
         <p className="text-[var(--text-muted)] text-sm">
           No plan generated yet.{" "}
-          <span className="text-brand-400 cursor-pointer hover:underline">
+          <button
+            onClick={onNavigateToGenerate}
+            className="text-brand-400 hover:underline focus:outline-none cursor-pointer"
+          >
             Generate your first plan →
-          </span>
+          </button>
         </p>
       </div>
     );
   }
+
+  // BUG FIX: `total_days` may not be present in older persisted plans (before
+  // the backend fix). Fall back to the actual schedule length so the UI never
+  // shows "undefined".
+  const totalDays = activePlan.total_days ?? activePlan.daily_schedule?.length ?? 0;
 
   return (
     <div className="space-y-6">
@@ -45,9 +60,9 @@ export default function StudyPlanView() {
         {/* Stats */}
         <div className="grid grid-cols-3 gap-4 mt-5">
           {[
-            { label: "Total Days",   value: activePlan.total_days },
+            { label: "Total Days",   value: totalDays },
             { label: "Total Hours",  value: formatHours(activePlan.total_hours) },
-            { label: "Topics",       value: activePlan.topic_breakdown.length },
+            { label: "Topics",       value: activePlan.topic_breakdown?.length ?? 0 },
           ].map(({ label, value }) => (
             <div key={label} className="bg-[var(--bg-raised)] rounded-xl p-3.5 text-center">
               <p className="text-xl font-bold text-[var(--text-primary)]">{value}</p>
@@ -64,10 +79,10 @@ export default function StudyPlanView() {
             <Calendar size={16} className="text-brand-400" />
             Daily Schedule
           </h3>
-          {activePlan.daily_schedule.slice(0, 14).map((day, i) => (
+          {activePlan.daily_schedule?.slice(0, 14).map((day, i) => (
             <DayCard key={day.date} day={day} index={i} />
           ))}
-          {activePlan.daily_schedule.length > 14 && (
+          {(activePlan.daily_schedule?.length ?? 0) > 14 && (
             <p className="text-xs text-center text-[var(--text-muted)] py-2">
               + {activePlan.daily_schedule.length - 14} more days in your plan
             </p>
@@ -83,7 +98,7 @@ export default function StudyPlanView() {
               Topic Breakdown
             </h3>
             <div className="space-y-2.5">
-              {activePlan.topic_breakdown.slice(0, 8).map((t) => (
+              {activePlan.topic_breakdown?.slice(0, 8).map((t) => (
                 <div key={t.topic} className="flex items-center justify-between gap-2">
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-medium text-[var(--text-primary)] truncate">{t.topic}</p>
@@ -98,7 +113,7 @@ export default function StudyPlanView() {
           </div>
 
           {/* AI tips */}
-          {activePlan.tips.length > 0 && (
+          {(activePlan.tips?.length ?? 0) > 0 && (
             <div className="card p-5">
               <h3 className="font-semibold text-[var(--text-primary)] text-sm mb-3 flex items-center gap-2">
                 <BookOpen size={14} className="text-violet-400" />

@@ -108,7 +108,9 @@ class ChatResponse(BaseModel):
 # ── Schedule ──────────────────────────────────────────────────────────────────
 
 class ScheduleUpdateRequest(BaseModel):
-    session_id: str
+    # BUG FIX: removed duplicate session_id — it is already the path parameter
+    # in PATCH /sessions/{session_id}. Having it in body AND path caused FastAPI
+    # to require it twice, breaking client requests.
     status: str   # "completed" | "skipped"
     notes: Optional[str] = None
 

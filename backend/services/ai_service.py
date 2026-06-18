@@ -3,6 +3,7 @@ AI Service — unified interface for OpenAI & Gemini.
 Swap providers via AI_PROVIDER env var without changing business logic.
 """
 
+import re
 import json
 import logging
 from typing import List, Dict, Any, Optional
@@ -11,6 +12,28 @@ from datetime import datetime, timedelta
 from core.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+# ── JSON cleanup helper ───────────────────────────────────────────────────────
+
+def _clean_json(text: str) -> str:
+    """
+    Strip markdown code fences that LLMs sometimes wrap JSON in.
+
+    BUG FIXED: The original code used Python's str.lstrip("```json") which
+    strips *individual characters* from the set {"`", "j", "s", "o", "n"},
+    NOT the literal substring "```json". This corrupted JSON strings that
+    started with any of those characters (e.g. a JSON key like "jobs" would
+    have its leading chars stripped).
+
+    Correct approach: use regex to remove the fence as a whole substring.
+    """
+    text = text.strip()
+    # Remove opening fence: ```json or ``` (with optional newline)
+    text = re.sub(r"^```(?:json)?\s*\n?", "", text)
+    # Remove closing fence
+    text = re.sub(r"\n?```\s*$", "", text)
+    return text.strip()
 
 
 # ── Provider client factory ───────────────────────────────────────────────────
@@ -37,6 +60,11 @@ async def ai_complete(
     Returns (response_text, tokens_used).
     Handles both OpenAI and Gemini transparently.
     """
+    if not settings.OPENAI_API_KEY and not settings.GEMINI_API_KEY:
+        raise ValueError(
+            "No AI API key configured. Set OPENAI_API_KEY or GEMINI_API_KEY "
+            "in your environment variables."
+        )
     if settings.AI_PROVIDER == "openai":
         return await _openai_complete(system_prompt, user_prompt, json_mode, history)
     else:
@@ -79,7 +107,6 @@ async def _gemini_complete(system_prompt, user_prompt, json_mode, history):
 
     response = await model.generate_content_async(full_prompt)
     text = response.text or ""
-    # Gemini doesn't expose token count the same way; approximate
     tokens = len(text.split()) * 2
     return text, tokens
 
@@ -158,11 +185,13 @@ Generate a realistic plan for ALL {days_until_exam} days. Be specific about topi
 """
     text, tokens = await ai_complete(STUDY_PLANNER_SYSTEM, prompt, json_mode=True)
     try:
-        clean = text.strip().lstrip("```json").rstrip("```").strip()
-        return json.loads(clean)
-    except json.JSONDecodeError:
-        logger.error(f"Failed to parse planner JSON: {text[:200]}")
-        raise ValueError("AI returned invalid plan format. Please retry.")
+        return json.loads(_clean_json(text))
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse planner JSON: {text[:300]} | error: {e}")
+        raise ValueError(
+            "AI returned an invalid response format. Please try again — "
+            "this occasionally happens with complex plans."
+        )
 
 
 ANALYZER_SYSTEM = """
@@ -200,8 +229,13 @@ Return JSON:
 }}
 """
     text_out, _ = await ai_complete(ANALYZER_SYSTEM, prompt, json_mode=True)
-    clean = text_out.strip().lstrip("```json").rstrip("```").strip()
-    return json.loads(clean)
+    try:
+        return json.loads(_clean_json(text_out))
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse analyzer JSON: {text_out[:300]} | error: {e}")
+        raise ValueError(
+            "AI returned an invalid analysis format. Please try again."
+        )
 
 
 FILE_ANALYSIS_SYSTEM = """
@@ -234,8 +268,13 @@ Return JSON:
 Generate 5-8 flashcard suggestions from the most important content.
 """
     text_out, _ = await ai_complete(FILE_ANALYSIS_SYSTEM, prompt, json_mode=True)
-    clean = text_out.strip().lstrip("```json").rstrip("```").strip()
-    return json.loads(clean)
+    try:
+        return json.loads(_clean_json(text_out))
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse file analysis JSON: {text_out[:300]} | error: {e}")
+        raise ValueError(
+            "AI returned an invalid analysis format. Please try again."
+        )
 
 
 CHAT_SYSTEM = {

@@ -2,11 +2,11 @@
 /api/planner — AI study plan generation endpoint.
 """
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException
 from datetime import datetime, timezone
 import uuid
 
-from models.schemas import PlannerRequest, StudyPlanResponse
+from models.schemas import PlannerRequest
 from services.ai_service import generate_study_plan
 
 router = APIRouter()
@@ -24,8 +24,15 @@ async def generate_plan(req: PlannerRequest):
         exam_dt = exam_dt.replace(tzinfo=timezone.utc)
 
     days_until = (exam_dt - now).days
+
+    # BUG FIX: original check was days_until < 1, but that means "today" (0 days)
+    # gets through the client but fails here with a confusing message.
+    # Now we give a clear, user-friendly error.
     if days_until < 1:
-        raise HTTPException(status_code=400, detail="Exam date must be in the future.")
+        raise HTTPException(
+            status_code=400,
+            detail="Exam date must be at least tomorrow. Please choose a future date."
+        )
     if days_until > 365:
         raise HTTPException(status_code=400, detail="Exam must be within 1 year.")
 
@@ -43,9 +50,16 @@ async def generate_plan(req: PlannerRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI generation failed: {str(e)}")
 
+    # BUG FIX: original response never included `total_days`, but the frontend
+    # StudyPlan type and StudyPlanView component both reference activePlan.total_days.
+    # Compute it from the generated schedule so the frontend always has it.
+    daily_schedule = plan_data.get("daily_schedule", [])
+    total_days = len(daily_schedule)
+
     return {
         "plan_id": str(uuid.uuid4()),
         "days_until_exam": days_until,
+        "total_days": total_days,          # ← was missing
         **plan_data,
     }
 

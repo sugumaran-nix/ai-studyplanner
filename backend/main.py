@@ -24,13 +24,29 @@ app = FastAPI(
 )
 
 # ── CORS ──────────────────────────────────────────────────────────────────────
+# allow_origins covers explicitly listed origins;
+# allow_origin_regex additionally covers all Vercel preview URLs.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.ALLOWED_ORIGINS,
+    allow_origin_regex=settings.ALLOWED_ORIGIN_REGEX,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ── Startup validation ────────────────────────────────────────────────────────
+@app.on_event("startup")
+async def startup_event():
+    try:
+        settings.validate_ai_config()
+        logger.info(
+            f"StudyMind started — provider={settings.AI_PROVIDER}, "
+            f"model={settings.AI_MODEL}, env={settings.APP_ENV}"
+        )
+    except RuntimeError as e:
+        logger.error(f"⚠ STARTUP WARNING: {e}")
+        # Don't crash the server — return 503 on AI calls instead
 
 # ── Request timing middleware ─────────────────────────────────────────────────
 @app.middleware("http")
@@ -59,7 +75,17 @@ app.include_router(schedule.router, prefix="/api/schedule", tags=["Smart Schedul
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "version": "1.0.0"}
+    provider_ok = bool(
+        (settings.AI_PROVIDER == "openai" and settings.OPENAI_API_KEY) or
+        (settings.AI_PROVIDER == "gemini" and settings.GEMINI_API_KEY)
+    )
+    return {
+        "status": "ok",
+        "version": "1.0.0",
+        "ai_provider": settings.AI_PROVIDER,
+        "ai_ready": provider_ok,
+    }
+
 if __name__ == "__main__":
     import uvicorn
     import os

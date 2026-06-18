@@ -8,7 +8,7 @@ import uuid
 import json
 
 from models.schemas import ChatRequest, ChatResponse
-from services.ai_service import chat_with_ai, _get_openai_client
+from services.ai_service import chat_with_ai  # _get_openai_client removed (unused import)
 from core.config import settings
 
 router = APIRouter()

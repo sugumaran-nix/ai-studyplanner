@@ -18,6 +18,19 @@ const DIFFICULTY_OPTIONS = [
   { value: "intensive", label: "Intensive", desc: "Maximum coverage, exam-crunch mode" },
 ] as const;
 
+// BUG FIX: compute today's date string at call time (not at module load)
+// so it stays accurate if the user keeps the page open across midnight.
+function getTodayStr(): string {
+  return new Date().toISOString().split("T")[0];
+}
+
+// Max date = 1 year from today
+function getMaxDateStr(): string {
+  const d = new Date();
+  d.setFullYear(d.getFullYear() + 1);
+  return d.toISOString().split("T")[0];
+}
+
 export default function PlannerForm({ onGenerated }: Props) {
   const { setActivePlan } = useStore();
   const [loading, setLoading] = useState(false);
@@ -40,7 +53,14 @@ export default function PlannerForm({ onGenerated }: Props) {
   }
 
   function removeSubject(s: string) {
-    setForm((f) => ({ ...f, subjects: f.subjects.filter((x) => x !== s) }));
+    setForm((f) => ({
+      ...f,
+      subjects: f.subjects.filter((x) => x !== s),
+      // BUG FIX: also remove from weak_subjects when the parent subject is deleted.
+      // Previously, removing a subject left stale entries in weak_subjects that
+      // would be sent to the backend — causing confusing AI plan output.
+      weak_subjects: f.weak_subjects.filter((x) => x !== s),
+    }));
   }
 
   function addWeak() {
@@ -48,6 +68,30 @@ export default function PlannerForm({ onGenerated }: Props) {
     if (!s || form.weak_subjects.includes(s) || !form.subjects.includes(s)) return;
     setForm((f) => ({ ...f, weak_subjects: [...f.weak_subjects, s] }));
     setWeakInput("");
+  }
+
+  // BUG FIX: pressing PageDown / ArrowDown on a <input type="number"> can push
+  // the value below the configured minimum (browsers apply large page-jumps).
+  // We intercept those keys and manually clamp the value instead.
+  function handleHoursKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    const MIN = 0.5;
+    const MAX = 16;
+    const STEP = 0.5;
+
+    if (e.key === "ArrowDown" || e.key === "PageDown") {
+      e.preventDefault();
+      setForm((f) => ({
+        ...f,
+        daily_hours: Math.max(MIN, parseFloat((f.daily_hours - STEP).toFixed(1))),
+      }));
+    }
+    if (e.key === "ArrowUp" || e.key === "PageUp") {
+      e.preventDefault();
+      setForm((f) => ({
+        ...f,
+        daily_hours: Math.min(MAX, parseFloat((f.daily_hours + STEP).toFixed(1))),
+      }));
+    }
   }
 
   async function handleSubmit() {
@@ -59,9 +103,25 @@ export default function PlannerForm({ onGenerated }: Props) {
       toast.error("Please set your exam date.");
       return;
     }
+
+    // BUG FIX: validate exam date client-side before sending.
+    // The HTML `min` attribute can be bypassed by typing a date manually.
+    // Also handles timezone edge cases (user in IST, server in UTC).
+    const today = getTodayStr();
+    if (form.exam_date <= today) {
+      toast.error("Exam date must be tomorrow or later. Please choose a future date.");
+      return;
+    }
+
+    // BUG FIX: clamp daily_hours to safe bounds in case of manual text input
+    const clampedHours = Math.min(16, Math.max(0.5, form.daily_hours || 0.5));
+    if (clampedHours !== form.daily_hours) {
+      setForm((f) => ({ ...f, daily_hours: clampedHours }));
+    }
+
     setLoading(true);
     try {
-      const plan = await plannerApi.generate(form);
+      const plan = await plannerApi.generate({ ...form, daily_hours: clampedHours });
       setActivePlan(plan);
       toast.success("Study plan generated! 🎉");
       onGenerated();
@@ -129,10 +189,16 @@ export default function PlannerForm({ onGenerated }: Props) {
             <input
               type="date"
               className="input-base"
-              min={new Date().toISOString().split("T")[0]}
+              min={getTodayStr()}
+              max={getMaxDateStr()}
               value={form.exam_date}
               onChange={(e) => setForm((f) => ({ ...f, exam_date: e.target.value }))}
             />
+            {form.exam_date && form.exam_date <= getTodayStr() && (
+              <p className="text-xs text-rose-400">
+                ⚠ Please choose a date after today.
+              </p>
+            )}
           </div>
           <div className="space-y-2">
             <label className="label flex items-center gap-2">
@@ -146,9 +212,16 @@ export default function PlannerForm({ onGenerated }: Props) {
                 step={0.5}
                 className="input-base pr-10"
                 value={form.daily_hours}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, daily_hours: parseFloat(e.target.value) || 0 }))
-                }
+                onChange={(e) => {
+                  const val = parseFloat(e.target.value);
+                  setForm((f) => ({
+                    ...f,
+                    // BUG FIX: clamp immediately on change so NaN / negative
+                    // values never persist in state.
+                    daily_hours: isNaN(val) ? 0.5 : Math.min(16, Math.max(0.5, val)),
+                  }));
+                }}
+                onKeyDown={handleHoursKeyDown}
               />
               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[var(--text-muted)]">
                 hrs
