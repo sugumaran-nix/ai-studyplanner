@@ -17,21 +17,9 @@ logger = logging.getLogger(__name__)
 # ── JSON cleanup helper ───────────────────────────────────────────────────────
 
 def _clean_json(text: str) -> str:
-    """
-    Strip markdown code fences that LLMs sometimes wrap JSON in.
-
-    BUG FIXED: The original code used Python's str.lstrip("```json") which
-    strips *individual characters* from the set {"`", "j", "s", "o", "n"},
-    NOT the literal substring "```json". This corrupted JSON strings that
-    started with any of those characters (e.g. a JSON key like "jobs" would
-    have its leading chars stripped).
-
-    Correct approach: use regex to remove the fence as a whole substring.
-    """
+    """Strip markdown code fences that LLMs sometimes wrap JSON in."""
     text = text.strip()
-    # Remove opening fence: ```json or ``` (with optional newline)
     text = re.sub(r"^```(?:json)?\s*\n?", "", text)
-    # Remove closing fence
     text = re.sub(r"\n?```\s*$", "", text)
     return text.strip()
 
@@ -42,11 +30,6 @@ def _get_openai_client():
     from openai import AsyncOpenAI
     return AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
-def _get_gemini_client():
-    import google.generativeai as genai
-    genai.configure(api_key=settings.GEMINI_API_KEY)
-    return genai.GenerativeModel("gemini-1.5-flash")
-
 
 # ── Core completion wrapper ───────────────────────────────────────────────────
 
@@ -56,10 +39,7 @@ async def ai_complete(
     json_mode: bool = False,
     history: Optional[List[Dict]] = None,
 ) -> tuple[str, int]:
-    """
-    Returns (response_text, tokens_used).
-    Handles both OpenAI and Gemini transparently.
-    """
+    """Returns (response_text, tokens_used)."""
     if not settings.OPENAI_API_KEY and not settings.GEMINI_API_KEY:
         raise ValueError(
             "No AI API key configured. Set OPENAI_API_KEY or GEMINI_API_KEY "
@@ -95,18 +75,55 @@ async def _openai_complete(system_prompt, user_prompt, json_mode, history):
 
 
 async def _gemini_complete(system_prompt, user_prompt, json_mode, history):
+    """
+    FIX 1 — History was silently ignored.
+      The original code accepted a `history` param but never used it, so the
+      AI chat had no memory of previous messages. Now we convert the
+      OpenAI-style history (list of {role, content} dicts) into Gemini's
+      format and pass it via start_chat().
+
+    FIX 2 — Blocking call in async context.
+      The original code called generate_content_async on a model object created
+      outside of a chat session, which doesn't support history. Using
+      start_chat() + send_message_async() fixes both issues at once.
+
+    FIX 3 — Model name updated.
+      gemini-1.5-flash is still valid but gemini-2.0-flash is faster and free.
+      Made configurable via AI_MODEL env var; default stays gemini-1.5-flash
+      for stability.
+    """
     import google.generativeai as genai
     genai.configure(api_key=settings.GEMINI_API_KEY)
+
+    # Use AI_MODEL if it looks like a Gemini model, otherwise fall back
+    model_name = settings.AI_MODEL if "gemini" in settings.AI_MODEL else "gemini-1.5-flash"
+
     model = genai.GenerativeModel(
-        "gemini-1.5-flash",
+        model_name,
         system_instruction=system_prompt,
     )
-    full_prompt = user_prompt
-    if json_mode:
-        full_prompt += "\n\nRespond ONLY with valid JSON, no markdown fences."
 
-    response = await model.generate_content_async(full_prompt)
+    # Convert OpenAI-style history → Gemini format
+    # OpenAI: [{"role": "user"|"assistant", "content": "..."}]
+    # Gemini: [{"role": "user"|"model",      "parts": ["..."]}]
+    gemini_history = []
+    if history:
+        for msg in history:
+            role = "model" if msg["role"] == "assistant" else "user"
+            gemini_history.append({
+                "role": role,
+                "parts": [msg["content"]],
+            })
+
+    chat = model.start_chat(history=gemini_history)
+
+    prompt = user_prompt
+    if json_mode:
+        prompt += "\n\nRespond ONLY with valid JSON. No markdown fences, no extra text."
+
+    response = await chat.send_message_async(prompt)
     text = response.text or ""
+    # Gemini doesn't expose token counts the same way; approximate
     tokens = len(text.split()) * 2
     return text, tokens
 
@@ -233,9 +250,7 @@ Return JSON:
         return json.loads(_clean_json(text_out))
     except json.JSONDecodeError as e:
         logger.error(f"Failed to parse analyzer JSON: {text_out[:300]} | error: {e}")
-        raise ValueError(
-            "AI returned an invalid analysis format. Please try again."
-        )
+        raise ValueError("AI returned an invalid analysis format. Please try again.")
 
 
 FILE_ANALYSIS_SYSTEM = """
@@ -272,9 +287,7 @@ Generate 5-8 flashcard suggestions from the most important content.
         return json.loads(_clean_json(text_out))
     except json.JSONDecodeError as e:
         logger.error(f"Failed to parse file analysis JSON: {text_out[:300]} | error: {e}")
-        raise ValueError(
-            "AI returned an invalid analysis format. Please try again."
-        )
+        raise ValueError("AI returned an invalid analysis format. Please try again.")
 
 
 CHAT_SYSTEM = {
